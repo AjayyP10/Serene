@@ -1,12 +1,14 @@
 # Node.js
 frontend/node_modules/
 frontend/.env
+frontend/package-lock.json.bak
 
 # Python/Django
 backend/__pycache__/
 backend/*.pyc
 backend/db.sqlite3  # Temporary; we'll use MySQL
 backend/.env
+backend/venv/
 
 # Docker
 *.log
@@ -14,5 +16,3 @@ backend/.env
 
 # Secrets
 .env
-
-frontend/package-lock.json.bak
