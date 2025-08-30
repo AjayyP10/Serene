@@ -1,0 +1,18 @@
+# Node.js
+frontend/node_modules/
+frontend/.env
+
+# Python/Django
+backend/__pycache__/
+backend/*.pyc
+backend/db.sqlite3  # Temporary; we'll use MySQL
+backend/.env
+
+# Docker
+*.log
+*.pid
+
+# Secrets
+.env
+
+frontend/package-lock.json.bak
