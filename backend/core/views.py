@@ -35,8 +35,21 @@ class MessageListCreate(generics.ListCreateAPIView):
         return Message.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-        logger.info(f"User {self.request.user.username} created message: {serializer.data['content']}")
+        try:
+            message = serializer.save(user=self.request.user)
+            logger.info(f"User {self.request.user.username} created message: {message.content} at {timezone.now()}")
+            print(f"Message saved: {message.content}")  # Debug print
+        except Exception as e:
+            logger.error(f"Failed to save message: {str(e)}")
+            raise
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.error(f"Validation error: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer

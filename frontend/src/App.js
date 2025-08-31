@@ -75,17 +75,19 @@ function App() {
     e.preventDefault();
     if (!token) {
       setLoginError('Please log in first.');
-      setTimeout(() => setLoginError(''), 3000); // Disappear after 3 seconds
+      setTimeout(() => setLoginError(''), 3000);
       return;
     }
+    console.log('Sending message with token:', token, 'content:', idea); // Debug log
     try {
       const response = await axios.post('http://127.0.0.1:8000/api/messages/', { content: idea }, {
-        headers: { Authorization: `Token ${token}` }, // Updated to Token authentication
+        headers: { Authorization: `Token ${token}` },
       });
       setMessages([...messages, response.data]);
       setIdea('');
+      alert('Content generated'); // Show success message
     } catch (error) {
-      console.error('Error generating message:', error);
+      console.error('Error generating message:', error.response ? error.response.data : error.message);
     }
   };
 
@@ -148,21 +150,22 @@ function App() {
           )}
         </div>
       )}
-      {token && (
-        <div>
-          <form onSubmit={handleGenerate}>
-            <input
-              type="text"
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              placeholder="Enter your idea"
-              required
-            />
-            <button type="submit">Generate Content</button>
-          </form>
-          <button onClick={handleLogout} style={{ marginTop: '10px' }}>Logout</button>
-        </div>
-      )}
+    {token && (
+      <div>
+        <form onSubmit={handleGenerate}>
+          <input
+            type="text"
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            placeholder="Enter your idea"
+            required
+          />
+          <button type="submit">Generate Content</button>
+        </form>
+        <button onClick={handleGenerate} style={{ marginTop: '10px' }}>Create Another Content</button> {/* New button */}
+        <button onClick={handleLogout} style={{ marginTop: '10px' }}>Logout</button>
+      </div>
+    )}
       <ul>
         {messages.map(message => (
           <li key={message.id}>
