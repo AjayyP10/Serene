@@ -4,7 +4,7 @@ import './App.css';
 
 function App() {
   const [messages, setMessages] = useState([]);
-  const [content, setContent] = useState('');
+  const [idea, setIdea] = useState('');
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -14,52 +14,54 @@ function App() {
   const [showRegister, setShowRegister] = useState(false);
 
   useEffect(() => {
-    const fetchMessages = async () => {
-      if (token) {
-        try {
-          const response = await axios.get('http://127.0.0.1:8000/api/messages/', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setMessages(response.data);
-        } catch {
-          setMessages([]);
-          setToken('');
-          localStorage.removeItem('token');
-        }
+  const fetchMessages = async () => {
+    if (token) {
+      console.log('Fetching messages with token:', token); // Debug log
+      try {
+        const response = await axios.get('http://127.0.0.1:8000/api/messages/', {
+          headers: { Authorization: `Token ${token}` },
+        });
+        setMessages(response.data);
+      } catch (error) {
+        console.error('Error fetching messages:', error.response ? error.response.data : error.message);
+        setMessages([]);
+        setToken('');
+        localStorage.removeItem('token');
       }
-    };
-    fetchMessages();
-  }, [token]);
+    }
+  };
+  fetchMessages();
+}, [token]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/token/', {
+      const response = await axios.post('http://127.0.0.1:8000/api/login/', {
         username,
         password,
       });
-      setToken(response.data.access);
-      localStorage.setItem('token', response.data.access);
+      setToken(response.data.token);
+      localStorage.setItem('token', response.data.token);
       setLoginError('');
     } catch (error) {
       setLoginError('Invalid credentials. Please try again.');
+      setTimeout(() => setLoginError(''), 3000); // Disappear after 3 seconds
     }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-    const response = await axios.post('http://127.0.0.1:8000/api/messages/register/', {
-      username,
-      email,
-      password,
-    });
-    setRegisterError('');
-    setShowRegister(false); // Switch back to login after success
-    console.log('Registration successful:', response.data);
+      await axios.post('http://127.0.0.1:8000/api/register/', {
+        username,
+        email,
+        password,
+      });
+      setRegisterError('');
+      setShowRegister(false); // Switch back to login after success
     } catch (error) {
-      setRegisterError('Registration failed. Username may be taken or data invalid. Check console for details.');
-      console.error('Registration error:', error.response ? error.response.data : error.message);
+      setRegisterError('Registration failed. Username may be taken or data invalid.');
+      setTimeout(() => setRegisterError(''), 3000); // Disappear after 3 seconds
     }
   };
 
@@ -69,19 +71,22 @@ function App() {
     setMessages([]);
   };
 
-  const handleSubmit = async (e) => {
+  const handleGenerate = async (e) => {
     e.preventDefault();
     if (!token) {
       setLoginError('Please log in first.');
+      setTimeout(() => setLoginError(''), 3000); // Disappear after 3 seconds
       return;
     }
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/messages/', { content }, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await axios.post('http://127.0.0.1:8000/api/messages/', { content: idea }, {
+        headers: { Authorization: `Token ${token}` }, // Updated to Token authentication
       });
       setMessages([...messages, response.data]);
-      setContent('');
-    } catch {}
+      setIdea('');
+    } catch (error) {
+      console.error('Error generating message:', error);
+    }
   };
 
   return (
@@ -107,8 +112,7 @@ function App() {
               />
               <button type="submit">Login</button>
               <p>
-                Not registered?{' '}
-                <button onClick={() => setShowRegister(true)}>Register</button>
+                Not registered? <button onClick={() => setShowRegister(true)}>Register</button>
               </p>
               {loginError && <p style={{ color: 'red' }}>{loginError}</p>}
             </form>
@@ -137,8 +141,7 @@ function App() {
               />
               <button type="submit">Register</button>
               <p>
-                Already have an account?{' '}
-                <button onClick={() => setShowRegister(false)}>Login</button>
+                Already have an account? <button onClick={() => setShowRegister(false)}>Login</button>
               </p>
               {registerError && <p style={{ color: 'red' }}>{registerError}</p>}
             </form>
@@ -147,15 +150,15 @@ function App() {
       )}
       {token && (
         <div>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleGenerate}>
             <input
               type="text"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Enter message content"
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              placeholder="Enter your idea"
               required
             />
-            <button type="submit">Send Message</button>
+            <button type="submit">Generate Content</button>
           </form>
           <button onClick={handleLogout} style={{ marginTop: '10px' }}>Logout</button>
         </div>
