@@ -43,6 +43,12 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    setToken('');
+    localStorage.removeItem('token');
+    setMessages([]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!token) {
@@ -82,16 +88,19 @@ function App() {
         </form>
       )}
       {token && (
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Enter message content"
-            required
-          />
-          <button type="submit">Send Message</button>
-        </form>
+        <div>
+          <form onSubmit={handleSubmit}>
+            <input
+              type="text"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Enter message content"
+              required
+            />
+            <button type="submit">Send Message</button>
+          </form>
+          <button onClick={handleLogout} style={{ marginTop: '10px' }}>Logout</button>
+        </div>
       )}
       <ul>
         {messages.map(message => (
