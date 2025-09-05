@@ -1,85 +1,158 @@
-from rest_framework import generics
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate
-from .models import Message, LoginLog
-from .serializers import MessageSerializer, RegisterSerializer
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework import status
-from rest_framework.response import Response
 from django.contrib.auth.models import User
-import logging
+from django.contrib.auth import authenticate
+from .models import Message
+from .serializers import MessageSerializer, UserSerializer, RegisterSerializer
+from .mastodon_service import MastodonService
+import json
+from datetime import datetime
 from django.utils import timezone
-from django.http import HttpRequest
 
-logger = logging.getLogger(__name__)
-
-class CustomObtainAuthToken(ObtainAuthToken):
+class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-        if user:
-            token, created = Token.objects.get_or_create(user=user)  # Ensure Token model is correct
-            logger.info(f"Login successful for user {user.username}, logging to database")
-            LoginLog.objects.create(user=user, ip_address=request.META.get('REMOTE_ADDR'))
-            return Response({'token': token.key}, status=200)
-        return Response({'error': 'Invalid credentials'}, status=400)
-
-class MessageListCreate(generics.ListCreateAPIView):
-    serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        logger.info(f"Auth check for user: {self.request.user}, token: {self.request.auth}")
-        return Message.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        try:
-            message = serializer.save(user=self.request.user)
-            logger.info(f"User {self.request.user.username} created message: {message.content} at {timezone.now()}")
-            print(f"Message saved: {message.content}")  # Debug print
-        except Exception as e:
-            logger.error(f"Failed to save message: {str(e)}")
-            raise
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.error(f"Validation error: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class RegisterView(generics.CreateAPIView):
-    serializer_class = RegisterSerializer
-    permission_classes = [AllowAny]
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            logger.info(f"New user registered: {request.data['username']}")
-            # Log the registration as a login event (simplified)
-            LoginLog.objects.create(user=User.objects.get(username=request.data['username']), ip_address=request.META.get('REMOTE_ADDR'))
-            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
-        logger.warning(f"Registration failed: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# Note: For actual login logging, integrate with your authentication view or middleware
-# Example pseudo-code for a login view or middleware:
-"""
-from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate, login
-
-def login_view(request):
-    username = request.data.get('username')
-    password = request.data.get('password')
-    user = authenticate(request, username=username, password=password)
-    if user:
-        login(request, user)
-        LoginLog.objects.create(user=user, ip_address=request.META.get('REMOTE_ADDR'))
+        serializer = self.serializer_class(data=request.data,
+                                           context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
         token, created = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key}, status=status.HTTP_200_OK)
-    return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-"""
+        return Response({
+            'token': token.key,
+            'user_id': user.pk,
+            'email': user.email
+        })
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def message_list_create(request):
+    if request.method == 'GET':
+        messages = Message.objects.filter(user=request.user).order_by('-created_at')
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = MessageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def register(request):
+    serializer = RegisterSerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.save()
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_mastodon_post(request):
+    """Create a new post and publish it to Mastodon"""
+    try:
+        content = request.data.get('content', '').strip()
+        visibility = request.data.get('visibility', 'public')
+        
+        if not content:
+            return Response(
+                {'error': 'Content is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Initialize Mastodon service
+        mastodon_service = MastodonService()
+        
+        # Post to Mastodon
+        mastodon_result = mastodon_service.post_status(content, visibility)
+        
+        if not mastodon_result['success']:
+            return Response(
+                {'error': f"Failed to post to Mastodon: {mastodon_result['error']}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # For now, just save as a regular message since Mastodon posting worked
+        message = Message.objects.create(
+            user=request.user,
+            content=f"[MASTODON] {content}",
+            activity_type='mastodon_post'
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Post created and published to Mastodon successfully',
+            'post': {
+                'id': message.id,
+                'content': content,
+                'created_at': message.created_at,
+                'mastodon_id': mastodon_result['post_id']
+            },
+            'mastodon_url': mastodon_result['url']
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        # Log the full error for debugging
+        import traceback
+        print(f"Error in create_mastodon_post: {str(e)}")
+        print(traceback.format_exc())
+        
+        return Response(
+            {'error': f'An error occurred: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mastodon_posts(request):
+    """Get all Mastodon posts for the current user"""
+    try:
+        # Get messages that are Mastodon posts
+        posts = Message.objects.filter(
+            user=request.user, 
+            activity_type='mastodon_post'
+        ).order_by('-created_at')
+        
+        post_data = []
+        for post in posts:
+            # Remove the [MASTODON] prefix for display
+            content = post.content.replace('[MASTODON] ', '')
+            post_data.append({
+                'id': post.id,
+                'content': content,
+                'created_at': post.created_at
+            })
+        
+        return Response({
+            'success': True,
+            'posts': post_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'An error occurred: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mastodon_account_info(request):
+    """Get Mastodon account information"""
+    try:
+        mastodon_service = MastodonService()
+        account_info = mastodon_service.get_account_info()
+        
+        return Response(account_info, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'An error occurred: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

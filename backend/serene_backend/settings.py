@@ -114,7 +114,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Berlin'
 
 USE_I18N = True
 
@@ -161,3 +161,16 @@ LOGGING = {
         },
     },
 }
+
+import os
+
+# Mastodon API Configuration
+MASTODON_CLIENT_NAME = 'Serene App'
+MASTODON_SCOPES = ['read', 'write']
+MASTODON_CLIENT_ID = 'Kn1mzQxFz232zfmO1YjvvjPppj1rlG_7lca-Ji8JP9c'
+MASTODON_CLIENT_SECRET = 'QtXHDSzSx2yDR95ju7Y2RePQXudj3783FimkNYWbzkI'
+MASTODON_ACCESS_TOKEN = 'foPqwPpZP_5w0CjOZcOClXyDiaPLD6NmZcYsLxrC-mE'
+MASTODON_INSTANCE_URL = 'https://mastodon.social'  # Base instance URL for API calls
+MASTODON_USER_PROFILE = 'https://mastodon.social/@ajayypannicker'  # Your profile URL
+MASTODON_OAUTH_CALLBACK_URL = 'http://localhost:3000/mastodon/callback'
+MASTODON_REDIRECT_URI = os.getenv('MASTODON_REDIRECT_URI', 'http://localhost:8000/auth/mastodon/callback/')
