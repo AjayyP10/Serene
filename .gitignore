@@ -16,3 +16,58 @@ backend/venv/
 
 # Secrets
 .env
+
+# What Will Be Pushed:
+
+### Backend Changes:
+- ✅ `requirements.txt` - Updated with Mastodon.py and dependencies
+- ✅ `core/mastodon_service.py` - New Mastodon API service class
+- ✅ `core/views.py` - Updated with Mastodon posting endpoints
+- ✅ `core/urls.py` - Added Mastodon API routes
+- ✅ `core/models.py` - Mastodon account and post models
+- ✅ `core/serializers.py` - Mastodon data serializers
+- ✅ `serene_backend/settings.py` - Mastodon API configuration
+
+### Frontend Changes:
+- ✅ `src/App.js` - Updated with Mastodon posting interface
+- ✅ Removed "Create Content" section as requested
+- ✅ Added Mastodon posting form with visibility options
+- ✅ Added post history display
+
+## Security Note:
+⚠️ **Important**: Make sure to add your API credentials to `.gitignore` or use environment variables to avoid pushing sensitive information like:
+- `MASTODON_CLIENT_ID`
+- `MASTODON_CLIENT_SECRET` 
+- `MASTODON_ACCESS_TOKEN`
+
+Create a `.env` file for sensitive data and add `.env` to your `.gitignore`.
+
+## Alternative: Create .gitignore
+```
+# Environment variables
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+
+# Node modules
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+```

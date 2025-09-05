@@ -174,3 +174,13 @@ MASTODON_INSTANCE_URL = 'https://mastodon.social'  # Base instance URL for API c
 MASTODON_USER_PROFILE = 'https://mastodon.social/@ajayypannicker'  # Your profile URL
 MASTODON_OAUTH_CALLBACK_URL = 'http://localhost:3000/mastodon/callback'
 MASTODON_REDIRECT_URI = os.getenv('MASTODON_REDIRECT_URI', 'http://localhost:8000/auth/mastodon/callback/')
+
+
+# File Upload Settings
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024   # 50MB
+FILE_UPLOAD_PERMISSIONS = 0o644
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

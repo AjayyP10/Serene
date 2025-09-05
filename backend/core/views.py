@@ -12,6 +12,11 @@ from .mastodon_service import MastodonService
 import json
 from datetime import datetime
 from django.utils import timezone
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+import tempfile
+import os
+import uuid
 
 class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
@@ -56,47 +61,98 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_mastodon_post(request):
-    """Create a new post and publish it to Mastodon"""
+    """Create a new post and publish it to Mastodon with optional media attachments"""
     try:
         content = request.data.get('content', '').strip()
         visibility = request.data.get('visibility', 'public')
         
-        if not content:
+        # Handle media files
+        media_files = request.FILES.getlist('media_files')
+        alt_texts = request.data.getlist('alt_texts') if 'alt_texts' in request.data else []
+        
+        # Content is optional if media files are provided
+        if not content and not media_files:
             return Response(
-                {'error': 'Content is required'}, 
+                {'error': 'Either content or media files are required'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Initialize Mastodon service
-        mastodon_service = MastodonService()
-        
-        # Post to Mastodon
-        mastodon_result = mastodon_service.post_status(content, visibility)
-        
-        if not mastodon_result['success']:
+        # Validate media files count
+        if len(media_files) > 4:
             return Response(
-                {'error': f"Failed to post to Mastodon: {mastodon_result['error']}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': 'Maximum 4 media files allowed per post'}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        # For now, just save as a regular message since Mastodon posting worked
-        message = Message.objects.create(
-            user=request.user,
-            content=f"[MASTODON] {content}",
-            activity_type='mastodon_post'
-        )
+        # Process uploaded files
+        temp_file_paths = []
+        processed_alt_texts = []
         
-        return Response({
-            'success': True,
-            'message': 'Post created and published to Mastodon successfully',
-            'post': {
-                'id': message.id,
-                'content': content,
-                'created_at': message.created_at,
-                'mastodon_id': mastodon_result['post_id']
-            },
-            'mastodon_url': mastodon_result['url']
-        }, status=status.HTTP_201_CREATED)
+        try:
+            for i, uploaded_file in enumerate(media_files):
+                # Create temporary file
+                temp_dir = tempfile.gettempdir()
+                file_extension = os.path.splitext(uploaded_file.name)[1]
+                temp_filename = f"mastodon_upload_{uuid.uuid4()}{file_extension}"
+                temp_file_path = os.path.join(temp_dir, temp_filename)
+                
+                # Save uploaded file to temporary location
+                with open(temp_file_path, 'wb+') as temp_file:
+                    for chunk in uploaded_file.chunks():
+                        temp_file.write(chunk)
+                
+                temp_file_paths.append(temp_file_path)
+                
+                # Get corresponding alt text
+                alt_text = alt_texts[i] if i < len(alt_texts) else None
+                processed_alt_texts.append(alt_text)
+            
+            # Initialize Mastodon service
+            mastodon_service = MastodonService()
+            
+            # Post to Mastodon with media
+            mastodon_result = mastodon_service.post_status(
+                content=content,
+                visibility=visibility,
+                media_files=temp_file_paths if temp_file_paths else None,
+                alt_texts=processed_alt_texts if processed_alt_texts else None
+            )
+            
+            if not mastodon_result['success']:
+                return Response(
+                    {'error': f"Failed to post to Mastodon: {mastodon_result['error']}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Save to local database
+            media_info = f" [{mastodon_result.get('media_count', 0)} media files]" if temp_file_paths else ""
+            message = Message.objects.create(
+                user=request.user,
+                content=f"[MASTODON]{media_info} {content}",
+                activity_type='mastodon_post'
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Post created and published to Mastodon successfully',
+                'post': {
+                    'id': message.id,
+                    'content': content,
+                    'created_at': message.created_at,
+                    'mastodon_id': mastodon_result['post_id'],
+                    'media_count': mastodon_result.get('media_count', 0)
+                },
+                'mastodon_url': mastodon_result['url']
+            }, status=status.HTTP_201_CREATED)
+            
+        finally:
+            # Clean up temporary files
+            for temp_file_path in temp_file_paths:
+                try:
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                except Exception as cleanup_error:
+                    print(f"Warning: Could not delete temp file {temp_file_path}: {cleanup_error}")
         
     except Exception as e:
         # Log the full error for debugging
@@ -122,12 +178,27 @@ def get_mastodon_posts(request):
         
         post_data = []
         for post in posts:
-            # Remove the [MASTODON] prefix for display
-            content = post.content.replace('[MASTODON] ', '')
+            # Extract content and media info
+            content = post.content
+            media_count = 0
+            
+            # Parse media info from content
+            if '[MASTODON]' in content:
+                content = content.replace('[MASTODON]', '').strip()
+                if content.startswith('[') and 'media files]' in content:
+                    # Extract media count
+                    try:
+                        media_part = content.split(']')[0] + ']'
+                        media_count = int(media_part.split('[')[1].split(' ')[0])
+                        content = content.split('] ', 1)[1] if '] ' in content else content
+                    except:
+                        pass
+            
             post_data.append({
                 'id': post.id,
                 'content': content,
-                'created_at': post.created_at
+                'created_at': post.created_at,
+                'media_count': media_count
             })
         
         return Response({
